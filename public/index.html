@@ -1,8 +1,217 @@
 <!doctype html>
-<html>
-  <head><meta charset="utf-8"><title>TD Training</title></head>
-  <body>
-    <h1>TD Training działa</h1>
-    <p>API: /api/auth/me</p>
-  </body>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TD Training</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 24px; max-width: 900px; }
+    h1 { margin: 0 0 8px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin: 14px 0; }
+    label { display:block; font-size: 12px; margin-top: 10px; opacity: .8; }
+    input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+    button { padding: 10px 14px; border: 0; border-radius: 8px; cursor: pointer; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .ok { color: #0a7; }
+    .bad { color: #c22; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 10px; border-radius: 8px; }
+    .muted { opacity: .75; }
+  </style>
+</head>
+<body>
+  <h1>TD Training</h1>
+  <div class="muted">Panel startowy (bootstrap + logowanie + test admin API)</div>
+
+  <div class="card">
+    <h2>1) Status zalogowania</h2>
+    <button id="btnMe">Odśwież /api/auth/me</button>
+    <div id="meOut" class="muted" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>2) Stwórz admina (jednorazowo)</h2>
+    <div class="muted">Użyj tego raz. Potem najlepiej usuń tę sekcję z pliku.</div>
+
+    <label>BOOTSTRAP_KEY</label>
+    <input id="bootstrapKey" placeholder="np. MOJ_SUPER_KLUCZ_123" />
+
+    <div class="row">
+      <div>
+        <label>ID admina (z gry)</label>
+        <input id="adminGameId" placeholder="np. 1001" />
+      </div>
+      <div>
+        <label>Imię i nazwisko admina</label>
+        <input id="adminName" placeholder="np. Admin TD" />
+      </div>
+    </div>
+
+    <label>Hasło admina</label>
+    <input id="adminPass" type="password" placeholder="ustaw silne hasło" />
+
+    <button id="btnBootstrap" style="margin-top:12px;">Utwórz admina</button>
+    <div id="bootstrapOut" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>3) Logowanie</h2>
+    <div class="row">
+      <div>
+        <label>Twoje ID (z gry)</label>
+        <input id="loginId" placeholder="np. 1001" />
+      </div>
+      <div>
+        <label>Hasło</label>
+        <input id="loginPass" type="password" placeholder="hasło" />
+      </div>
+    </div>
+    <button id="btnLogin" style="margin-top:12px;">Zaloguj</button>
+    <button id="btnLogout" style="margin-top:12px;">Wyloguj</button>
+    <div id="loginOut" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>4) Admin mode (suwak)</h2>
+    <div class="muted">Admin API działa tylko gdy jesteś adminem i masz włączony admin mode.</div>
+    <button id="btnAdminOn" style="margin-top:10px;">Włącz admin mode</button>
+    <button id="btnAdminOff" style="margin-top:10px;">Wyłącz admin mode</button>
+    <div id="adminModeOut" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>5) Szkolenia (test admin API)</h2>
+    <button id="btnLoadTrainings">Pokaż szkolenia</button>
+    <div id="trainingsOut" style="margin-top:10px;"></div>
+
+    <h3 style="margin-top:18px;">Dodaj szkolenie</h3>
+    <div class="row">
+      <div>
+        <label>CODE (np. BASIC)</label>
+        <input id="tCode" placeholder="np. BASIC" />
+      </div>
+      <div>
+        <label>Nazwa (np. Basic)</label>
+        <input id="tName" placeholder="np. Basic" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Cooldown po failu (godz.)</label>
+        <input id="tCooldownFail" placeholder="24" />
+      </div>
+      <div>
+        <label>Max prób</label>
+        <input id="tMaxAttempts" placeholder="3" />
+      </div>
+    </div>
+    <button id="btnAddTraining" style="margin-top:12px;">Dodaj</button>
+    <div id="addTrainingOut" style="margin-top:10px;"></div>
+  </div>
+
+  <script>
+    async function showMe() {
+      const r = await fetch("/api/auth/me");
+      const j = await r.json();
+      document.getElementById("meOut").innerHTML =
+        "<pre>" + JSON.stringify(j, null, 2) + "</pre>";
+    }
+
+    async function bootstrapAdmin() {
+      const out = document.getElementById("bootstrapOut");
+      out.textContent = "Wysyłam...";
+      const body = {
+        bootstrapKey: document.getElementById("bootstrapKey").value.trim(),
+        gameId: document.getElementById("adminGameId").value.trim(),
+        fullName: document.getElementById("adminName").value.trim(),
+        password: document.getElementById("adminPass").value
+      };
+      const r = await fetch("/api/bootstrap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const t = await r.text();
+      out.innerHTML = r.ok ? `<div class="ok">${t}</div>` : `<div class="bad">${t}</div>`;
+      await showMe();
+    }
+
+    async function login() {
+      const out = document.getElementById("loginOut");
+      out.textContent = "Loguję...";
+      const body = {
+        gameId: document.getElementById("loginId").value.trim(),
+        password: document.getElementById("loginPass").value
+      };
+      const r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const t = await r.text();
+      out.innerHTML = r.ok ? `<div class="ok">${t}</div>` : `<div class="bad">${t}</div>`;
+      await showMe();
+    }
+
+    async function logout() {
+      const out = document.getElementById("loginOut");
+      out.textContent = "Wylogowuję...";
+      const r = await fetch("/api/auth/logout", { method: "POST" });
+      const t = await r.text();
+      out.innerHTML = r.ok ? `<div class="ok">${t}</div>` : `<div class="bad">${t}</div>`;
+      await showMe();
+    }
+
+    async function adminMode(enabled) {
+      const out = document.getElementById("adminModeOut");
+      out.textContent = "Ustawiam...";
+      const r = await fetch("/api/auth/toggle-admin-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled })
+      });
+      const t = await r.text();
+      out.innerHTML = r.ok ? `<div class="ok">${t}</div>` : `<div class="bad">${t}</div>`;
+      await showMe();
+    }
+
+    async function loadTrainings() {
+      const out = document.getElementById("trainingsOut");
+      out.textContent = "Ładuję...";
+      const r = await fetch("/api/admin/training-types");
+      const t = await r.text();
+      out.innerHTML = r.ok ? `<pre>${t}</pre>` : `<div class="bad">${t}</div>`;
+    }
+
+    async function addTraining() {
+      const out = document.getElementById("addTrainingOut");
+      out.textContent = "Dodaję...";
+      const body = {
+        code: document.getElementById("tCode").value.trim(),
+        name: document.getElementById("tName").value.trim(),
+        cooldownAfterFailHours: Number(document.getElementById("tCooldownFail").value || 24),
+        maxAttempts: Number(document.getElementById("tMaxAttempts").value || 3),
+        isActive: 1
+      };
+      const r = await fetch("/api/admin/training-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const t = await r.text();
+      out.innerHTML = r.ok ? `<div class="ok">${t}</div>` : `<div class="bad">${t}</div>`;
+      await loadTrainings();
+    }
+
+    document.getElementById("btnMe").onclick = showMe;
+    document.getElementById("btnBootstrap").onclick = bootstrapAdmin;
+    document.getElementById("btnLogin").onclick = login;
+    document.getElementById("btnLogout").onclick = logout;
+    document.getElementById("btnAdminOn").onclick = () => adminMode(true);
+    document.getElementById("btnAdminOff").onclick = () => adminMode(false);
+    document.getElementById("btnLoadTrainings").onclick = loadTrainings;
+    document.getElementById("btnAddTraining").onclick = addTraining;
+
+    showMe();
+  </script>
+</body>
 </html>
