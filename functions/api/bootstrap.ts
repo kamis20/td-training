@@ -1,4 +1,3 @@
-
 function b64u(bytes: Uint8Array) {
   return btoa(String.fromCharCode(...bytes))
     .replaceAll("+", "-")
@@ -11,11 +10,6 @@ function fromB64u(s: string) {
   while (s.length % 4) s += "=";
   const bin = atob(s);
   return new Uint8Array([...bin].map((c) => c.charCodeAt(0)));
-}
-
-async function sha256Hex(data: Uint8Array) {
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function hashPassword(password: string, saltBytes: Uint8Array) {
@@ -43,37 +37,58 @@ async function hashPassword(password: string, saltBytes: Uint8Array) {
 }
 
 export const onRequestPost: PagesFunction = async ({ request, env }) => {
-  const body = await request.json().catch(() => null);
-  if (!body) return new Response("Bad JSON", { status: 400 });
+  try {
+    const body = await request.json().catch(() => null);
+    if (!body) return new Response("Bad JSON", { status: 400 });
 
-  const { bootstrapKey, gameId, fullName, password } = body;
+    const { bootstrapKey, gameId, fullName, password } = body;
 
-  if (!env.BOOTSTRAP_KEY || bootstrapKey !== env.BOOTSTRAP_KEY) {
-    return new Response("Forbidden", { status: 403 });
+    if (!env.BOOTSTRAP_KEY || bootstrapKey !== env.BOOTSTRAP_KEY) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    if (!gameId || !fullName || !password) {
+      return new Response("Missing fields", { status: 400 });
+    }
+
+    // 1) Jeśli admin już istnieje — koniec
+    const existingAdmin = await env.DB.prepare(
+      "SELECT game_id FROM users WHERE is_admin = 1 LIMIT 1"
+    ).first();
+
+    if (existingAdmin) {
+      return new Response("Admin already exists", { status: 409 });
+    }
+
+    // 2) Jeśli gameId już jest w bazie (np. wcześniej dodany trener) — zwróć czytelny błąd
+    const existingUser = await env.DB.prepare(
+      "SELECT game_id, is_admin FROM users WHERE game_id = ? LIMIT 1"
+    ).bind(gameId).first();
+
+    if (existingUser) {
+      return new Response("User with this gameId already exists", { status: 409 });
+    }
+
+    // 3) Tworzenie admina
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const hash = await hashPassword(password, salt);
+
+    const saltB64 = b64u(salt);
+    const hashB64 = b64u(hash);
+
+    await env.DB.prepare(
+      `INSERT INTO users (game_id, full_name, password_salt, password_hash, is_admin, is_active)
+       VALUES (?, ?, ?, ?, 1, 1)`
+    ).bind(gameId, fullName, saltB64, hashB64).run();
+
+    return Response.json({ ok: true });
+  } catch (e: any) {
+    // Zamiast 1101, pokażemy błąd normalnie
+    const msg = String(e?.message || e);
+    console.log("BOOTSTRAP_ERROR", msg, e?.stack);
+    return Response.json(
+      { ok: false, error: msg, stack: e?.stack ? String(e.stack).slice(0, 1500) : null },
+      { status: 500 }
+    );
   }
-
-  if (!gameId || !fullName || !password) {
-    return new Response("Missing fields", { status: 400 });
-  }
-
-  const existingAdmin = await env.DB.prepare(
-    "SELECT game_id FROM users WHERE is_admin = 1 LIMIT 1"
-  ).first();
-
-  if (existingAdmin) {
-    return new Response("Admin already exists", { status: 409 });
-  }
-
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const hash = await hashPassword(password, salt);
-
-  const saltB64 = b64u(salt);
-  const hashB64 = b64u(hash);
-
-  await env.DB.prepare(
-    `INSERT INTO users (game_id, full_name, password_salt, password_hash, is_admin, is_active)
-     VALUES (?, ?, ?, ?, 1, 1)`
-  ).bind(gameId, fullName, saltB64, hashB64).run();
-
-  return Response.json({ ok: true });
 };
